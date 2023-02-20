@@ -4,16 +4,21 @@ use std::fmt::Display;
 use std::process::Command;
 
 #[allow(dead_code)]
+#[derive(Clone, PartialEq)]
 pub enum BlockType {
     Once,
     Interval(u64),
-    Signal(i32),
+    Signal,
+}
+#[derive(Debug, Clone, Copy)]
+pub struct Env{
+    pub sigcomp: i32,
 }
 
 #[allow(dead_code)]
 pub enum CommandType<'a> {
     Shell(&'a [&'a str]),
-    Function(fn() -> Result<Box<dyn Display>, Box<dyn Error>>),
+    Function(fn(Option<Env>) -> Result<Box<dyn Display>, Box<dyn Error>>),
 }
 
 pub struct Block<'a> {
@@ -21,10 +26,11 @@ pub struct Block<'a> {
     pub command: CommandType<'a>,
     pub prefix: &'a str,
     pub suffix: &'a str,
+    pub signal: Option<i32>,
 }
 
 impl Block<'_> {
-    pub fn execute(&self) -> Option<String> {
+    pub fn execute(&self, env: Option<Env>) -> Option<String> {
         match self.command {
             CommandType::Shell(cmd) => {
                 let l: usize = cmd.len();
@@ -57,7 +63,7 @@ impl Block<'_> {
                 }
             }
             CommandType::Function(func) => {
-                match func() {
+                match func(env) {
                     Ok(r) => {
                         let s = r.to_string();
                         if s.is_empty() {

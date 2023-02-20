@@ -1,7 +1,10 @@
-use signal_hook::{
-    consts::{SIGHUP, SIGINT, SIGTERM},
-    iterator::Signals,
-};
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate concat_string;
+
+use block::Env;
+use libc::{ SIGHUP, SIGINT, SIGTERM };
 use std::{
     ffi::CString,
     ptr,
@@ -11,83 +14,100 @@ use std::{
 };
 use x11::xlib;
 
-#[macro_use(concat_string)]
-extern crate concat_string;
 
 mod block;
 mod blocks;
 mod config;
+mod signal;
 
 const SIGRTMIN: i32 = 34;
 
-fn await_signals(tx: Sender<i32>, signums: &[i32]) {
-    let mut signals = Signals::new(signums).unwrap();
-    for signal in signals.forever() {
-        tx.send(signal).unwrap();
-        if signal == SIGTERM || signal == SIGINT || signal == SIGHUP {
+fn await_signals(tx: Sender<(i32, i32)>, signum: i32,) {
+    let rev = if signum == -1 {
+        signal::Signal::reg([SIGTERM, SIGHUP, SIGINT].to_vec())
+    } else { 
+        signal::Signal::reg([signum, SIGTERM, SIGINT, SIGHUP].to_vec())
+    };
+    loop{
+        let sig = rev.recv().unwrap();
+        tx.send(sig).unwrap();
+        if is_terminal(sig.0){
             break;
         }
     }
 }
 
+fn is_terminal(sig: i32) -> bool{
+    sig == SIGTERM || sig == SIGINT || sig == SIGHUP 
+}
+
+
+
 fn main() {
     let (tx, rx): (
-        Sender<(usize, Option<String>)>,
-        Receiver<(usize, Option<String>)>,
+        Sender<(usize, Option<String>,)>,// index, msg, signal
+        Receiver<(usize, Option<String>, )>, 
     ) = channel();
     let mut handles = vec![];
     let mut outputs = vec![String::from(""); config::BLOCKS.len()];
     let display = unsafe { xlib::XOpenDisplay(ptr::null()) };
     let window = unsafe { xlib::XDefaultRootWindow(display) };
 
+
     // fire threads
     for (i, b) in config::BLOCKS.iter().enumerate() {
         let tx_clone = tx.clone();
-        let (tx_signals, rx_signals): (Sender<i32>, Receiver<i32>) = channel();
+        let (tx_signals, rx_signals): (Sender<(i32, i32)>, Receiver<(i32, i32)>) = channel();
+
+        let sig =  if let Some(s) = b.signal{ s } else { -1 };
+        if b.kind != block::BlockType::Once || sig > 15{
+            handles.push(thread::spawn(move || {
+                await_signals(tx_signals, SIGRTMIN + sig);
+            }))
+        }
+        
         match b.kind {
             block::BlockType::Once => {
-                let handle = thread::spawn(move || {
-                    let msg = b.execute();
+                handles.push(thread::spawn(move ||{ 
+                    let msg = b.execute(None);
                     tx_clone.send((i, msg)).unwrap();
-                });
-                handles.push(handle);
+                }))
             }
             block::BlockType::Interval(t) => {
-                handles.push(thread::spawn(move || {
-                    await_signals(tx_signals, &[SIGTERM, SIGINT, SIGHUP]);
-                }));
-                let handle = thread::spawn(move || loop {
-                    let msg = b.execute();
+                let handle = thread::spawn(move || {
+                    let msg = b.execute(None);
                     tx_clone.send((i, msg)).unwrap();
-                    if let Ok(signal) = rx_signals.recv_timeout(Duration::from_secs(t)) {
-                        if signal == SIGTERM || signal == SIGINT || signal == SIGHUP {
-                            tx_clone.send((usize::MAX, None)).unwrap();
-                            break;
+                    loop {
+                        if let Ok((signal, sigcomp)) = rx_signals.recv_timeout(Duration::from_secs(t)) {
+                            if is_terminal(signal){
+                                tx_clone.send((usize::MAX, None)).unwrap();
+                                break;
+                            }else{
+                                let msg = b.execute(Some(Env{ sigcomp }));
+                                tx_clone.send((i, msg)).unwrap();
+                            }
                         }
                     }
                 });
                 handles.push(handle);
             }
-            block::BlockType::Signal(s) => {
+            block::BlockType::Signal => {
+                let s = b.signal.unwrap();
                 if s < 1 || s > 15 {
                     tx_clone.send((i, None)).unwrap();
                     continue;
                 }
-                let msg = b.execute();
+                let msg = b.execute(None);
                 tx_clone.send((i, msg)).unwrap();
-                let _signum = SIGRTMIN + s;
-                handles.push(thread::spawn(move || {
-                    await_signals(tx_signals, &[SIGTERM, SIGINT, SIGHUP, _signum]);
-                }));
                 let handle = thread::spawn(move || {
-                    while let Ok(signal) = rx_signals.recv() {
+                    while let Ok((signal, sigcomp)) = rx_signals.recv() {
                         match signal {
                             SIGTERM | SIGINT | SIGHUP => {
                                 tx_clone.send((usize::MAX, None)).unwrap();
                                 break;
                             }
                             _signum => {
-                                let msg = b.execute();
+                                let msg = b.execute(Some(Env{ sigcomp }));
                                 tx_clone.send((i, msg)).unwrap();
                             }
                         }
@@ -97,6 +117,7 @@ fn main() {
             }
         }
     }
+
 
     // update status if a block change occurs
     drop(tx);

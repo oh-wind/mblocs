@@ -6,3 +6,5 @@ pub mod datetime;
 pub mod memory;
 #[allow(dead_code)]
 pub mod uptime;
+
+pub mod batterstate;
