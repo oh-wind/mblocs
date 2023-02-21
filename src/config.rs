@@ -25,10 +25,6 @@ pub const BT_ICONS: [&'static str; 10] = ["\u{f007a}", "\u{f007b}", "\u{f007c}",
 pub const BAT_PATH: &'static str = "/sys/class/power_supply/BAT1";
 pub const AC_PATH: &'static str = "/sys/class/power_supply/ACAD";
 
-pub fn testsss( env: Option<Env>) -> Result<Box<dyn Display>, Box<dyn Error>>{
-    println!("test: {:?}", env);
-    return Ok(Box::new(format!("{:?}", env)));
-}
 pub const BLOCKS: &[Block] = &[
     Block {
         kind: Interval(1),
@@ -72,11 +68,4 @@ pub const BLOCKS: &[Block] = &[
         suffix: "",
         signal: None,
     },
-    Block {
-        kind: Signal,
-        command: Function(testsss),
-        prefix: "",
-        suffix: "",
-        signal: Some(1),
-    }
 ];

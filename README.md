@@ -1,4 +1,6 @@
 # mblocks
+> This is a fork of [mblocks](https://gitlab.com/mhdy/mblocks), which adds some useful functions, such as allowing Interval to be triggered by a signal, and allowing to obtain a semaphore. This is useful for dwm to implement status bar clicks.
+
 
 This program is a multi-threaded memory-safe status monitor written in Rust.
 It updates the status only when there is a change.
@@ -9,7 +11,7 @@ It updates the status only when there is a change.
 
 First, clone this repository.
 ```
-git clone https://gitlab.com/mhdy/mblocks.git
+git clone https://github.com/oh-wind/mblocs.git
 ```
 
 Then, configure the status blocks by editing `src/config.rs`.
@@ -33,9 +35,9 @@ Each block has a kind, executes a command, and has a prefix and a suffix for for
 
 There are 3 kinds of blocks:
 
-- Once: blocks labeled with this kind are executed once at the start of the program.
-- Interval(N): blocks of this type are executed every N seconds.
-- Signal(S): these blocks are executed when the signal S is sent to the mblocks process. To send a signal, you can use `kill -$((34 + S)) $(pidof mblocks)` where `S` is the argument given to Signal, and it should not exceed 15 (1 <= S <= 15). This means you can define at most 15 Signal blocks, which is large enough.
+- Once: blocks labeled with this kind are executed once at the start of the program. The signal field will be ignored.
+- Interval(N): blocks of this type are executed every N seconds. If the signal field is not None, it will fire immediately when this signal is received.
+- Signal{ S: signal }: these blocks are executed when the signal S is sent to the mblocks process. To send a signal, you can use `kill -$((34 + S)) $(pidof mblocks)` where `S` is the argument given to Signal, and it should not exceed 15 (1 <= S <= 15). This means you can define at most 15 Signal blocks, which is large enough.
 
 The `command` attribute corresponds to the command to be executed and can be one of the following:
 
