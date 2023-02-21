@@ -4,7 +4,7 @@ extern crate lazy_static;
 extern crate concat_string;
 
 use block::Env;
-use libc::{ SIGHUP, SIGINT, SIGTERM };
+use libc::{SIGHUP, SIGINT, SIGTERM};
 use std::{
     ffi::CString,
     ptr,
@@ -14,80 +14,95 @@ use std::{
 };
 use x11::xlib;
 
-
 mod block;
 mod blocks;
 mod config;
 mod signal;
 
-const SIGRTMIN: i32 = 34;
+use libc::SIGRTMIN;
 
-fn await_signals(tx: Sender<(i32, i32)>, signum: i32,) {
+
+/// await given signum and [`SIGTERM`, `SIGHUP`, `SIGINT`], then send the received signal by tx.
+/// if the signum is -1, only await the terminal signals.
+fn await_signals(tx: Sender<(i32, i32)>, signum: i32) {
     let rev = if signum == -1 {
         signal::Signal::reg([SIGTERM, SIGHUP, SIGINT].to_vec())
-    } else { 
+    } else {
         signal::Signal::reg([signum, SIGTERM, SIGINT, SIGHUP].to_vec())
     };
-    loop{
+    loop {
         let sig = rev.recv().unwrap();
         tx.send(sig).unwrap();
-        if is_terminal(sig.0){
+        if is_terminal(sig.0) {
             break;
         }
     }
 }
 
-fn is_terminal(sig: i32) -> bool{
-    sig == SIGTERM || sig == SIGINT || sig == SIGHUP 
+fn is_terminal(sig: i32) -> bool {
+    sig == SIGTERM || sig == SIGINT || sig == SIGHUP
 }
-
-
 
 fn main() {
     let (tx, rx): (
-        Sender<(usize, Option<String>,)>,// index, msg, signal
-        Receiver<(usize, Option<String>, )>, 
+        Sender<(usize, Option<String>)>, // index, msg, signal
+        Receiver<(usize, Option<String>)>,
     ) = channel();
     let mut handles = vec![];
     let mut outputs = vec![String::from(""); config::BLOCKS.len()];
     let display = unsafe { xlib::XOpenDisplay(ptr::null()) };
     let window = unsafe { xlib::XDefaultRootWindow(display) };
 
-
     // fire threads
     for (i, b) in config::BLOCKS.iter().enumerate() {
         let tx_clone = tx.clone();
         let (tx_signals, rx_signals): (Sender<(i32, i32)>, Receiver<(i32, i32)>) = channel();
 
-        let sig =  if let Some(s) = b.signal{ s } else { -1 };
-        if b.kind != block::BlockType::Once || sig > 15{
+        let sig = if let Some(s) = b.signal { s } else { -1 };
+        if sig == -1 || (sig >= 0 && sig < 15) {
             handles.push(thread::spawn(move || {
-                await_signals(tx_signals, SIGRTMIN + sig);
-            }))
+                await_signals(tx_signals, SIGRTMIN() + sig);
+            }));
+        } else {
+            println!("Warning: not support signal: {}", sig);
+            println!("The block has been skipped.");
+            continue;
         }
-        
+
         match b.kind {
-            block::BlockType::Once => {
-                handles.push(thread::spawn(move ||{ 
-                    let msg = b.execute(None);
-                    tx_clone.send((i, msg)).unwrap();
-                }))
-            }
+            block::BlockType::Once => handles.push(thread::spawn(move || {
+                let msg = b.execute(None);
+                tx_clone.send((i, msg)).unwrap();
+                while let Ok((signal, sigcomp)) = rx_signals.recv() {
+                    match signal {
+                        SIGTERM | SIGINT | SIGHUP => {
+                            tx_clone.send((usize::MAX, None)).unwrap();
+                            break;
+                        }
+                        _signum => {
+                            let msg = b.execute(Some(Env { signal, sigcomp }));
+                            tx_clone.send((i, msg)).unwrap();
+                        }
+                    }
+                }
+            })),
             block::BlockType::Interval(t) => {
                 let handle = thread::spawn(move || {
                     let msg = b.execute(None);
                     let tx_clone = tx_clone;
                     tx_clone.send((i, msg)).unwrap();
                     loop {
-                        if let Ok((signal, sigcomp)) = rx_signals.recv_timeout(Duration::from_secs(t)) {
-                            if is_terminal(signal){
+                        if let Ok((signal, sigcomp)) =
+                            rx_signals.recv_timeout(Duration::from_secs(t))
+                        {
+                            if is_terminal(signal) {
                                 tx_clone.send((usize::MAX, None)).unwrap();
                                 break;
-                            }else{
-                                let msg = b.execute(Some(Env{ sigcomp }));
+                            } else {
+                                let msg = b.execute(Some(Env { signal, sigcomp }));
                                 tx_clone.send((i, msg)).unwrap();
                             }
-                        }else {
+                        } else {
                             let msg = b.execute(None);
                             tx_clone.send((i, msg)).unwrap();
                         }
@@ -111,7 +126,7 @@ fn main() {
                                 break;
                             }
                             _signum => {
-                                let msg = b.execute(Some(Env{ sigcomp }));
+                                let msg = b.execute(Some(Env { signal, sigcomp }));
                                 tx_clone.send((i, msg)).unwrap();
                             }
                         }
@@ -121,7 +136,6 @@ fn main() {
             }
         }
     }
-
 
     // update status if a block change occurs
     drop(tx);

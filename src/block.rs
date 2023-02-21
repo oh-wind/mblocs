@@ -4,23 +4,26 @@ use std::fmt::Display;
 use std::process::Command;
 
 #[allow(dead_code)]
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BlockType {
     Once,
     Interval(u64),
     Signal,
 }
 #[derive(Debug, Clone, Copy)]
-pub struct Env{
+pub struct Env {
+    pub signal:  i32,
     pub sigcomp: i32,
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub enum CommandType<'a> {
     Shell(&'a [&'a str]),
     Function(fn(Option<Env>) -> Result<Box<dyn Display>, Box<dyn Error>>),
 }
 
+#[derive(Debug)]
 pub struct Block<'a> {
     pub kind: BlockType,
     pub command: CommandType<'a>,
@@ -31,6 +34,9 @@ pub struct Block<'a> {
 
 impl Block<'_> {
     pub fn execute(&self, env: Option<Env>) -> Option<String> {
+        if let Some(e) = env {
+            println!("{:?}, {:?}", self, e);
+        }
         match self.command {
             CommandType::Shell(cmd) => {
                 let l: usize = cmd.len();
@@ -54,28 +60,24 @@ impl Block<'_> {
                     Ok(s) => {
                         if s.is_empty() {
                             Some(s)
-                        }
-                        else {
+                        } else {
                             Some(concat_string!(self.prefix, s.trim(), self.suffix))
                         }
-                    },
+                    }
                     Err(_) => None,
                 }
             }
-            CommandType::Function(func) => {
-                match func(env) {
-                    Ok(r) => {
-                        let s = r.to_string();
-                        if s.is_empty() {
-                            Some(s)
-                        }
-                        else {
-                            Some(concat_string!(self.prefix, s, self.suffix))
-                        }
-                    },
-                    Err(_) => None,
+            CommandType::Function(func) => match func(env) {
+                Ok(r) => {
+                    let s = r.to_string();
+                    if s.is_empty() {
+                        Some(s)
+                    } else {
+                        Some(concat_string!(self.prefix, s, self.suffix))
+                    }
                 }
-            }
+                Err(_) => None,
+            },
         }
     }
 }
@@ -83,7 +85,13 @@ impl Block<'_> {
 pub fn infer_status(outputs: &[String]) -> String {
     let rootname = outputs
         .iter()
-        .filter_map(|e| if !(*e).is_empty() { Some(e.to_owned()) } else { None })
+        .filter_map(|e| {
+            if !(*e).is_empty() {
+                Some(e.to_owned())
+            } else {
+                None
+            }
+        })
         .collect::<Vec<String>>()
         .join(config::SEPARATOR);
     concat_string!(config::PREFIX, rootname, config::SUFFIX)

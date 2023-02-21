@@ -1,7 +1,7 @@
+use crate::block::Env;
 use psutil::memory::virtual_memory;
 use std::error::Error;
 use std::fmt::Display;
-use crate::block::Env;
 
 pub fn memory_available() -> Result<Box<dyn Display>, Box<dyn Error>> {
     let avail = virtual_memory()?.available() as f64;
