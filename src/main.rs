@@ -76,6 +76,7 @@ fn main() {
             block::BlockType::Interval(t) => {
                 let handle = thread::spawn(move || {
                     let msg = b.execute(None);
+                    let tx_clone = tx_clone;
                     tx_clone.send((i, msg)).unwrap();
                     loop {
                         if let Ok((signal, sigcomp)) = rx_signals.recv_timeout(Duration::from_secs(t)) {
@@ -86,6 +87,9 @@ fn main() {
                                 let msg = b.execute(Some(Env{ sigcomp }));
                                 tx_clone.send((i, msg)).unwrap();
                             }
+                        }else {
+                            let msg = b.execute(None);
+                            tx_clone.send((i, msg)).unwrap();
                         }
                     }
                 });

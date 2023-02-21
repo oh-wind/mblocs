@@ -63,7 +63,7 @@ pub const BLOCKS: &[Block] = &[
         command: Function(battery_status),
         prefix: "",
         suffix: "",
-        signal: None,
+        signal: Some(2),
     },
     Block {
         kind: Once,
