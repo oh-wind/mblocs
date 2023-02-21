@@ -47,6 +47,10 @@ impl Block<'_> {
                 if l > 1 {
                     command.args(&cmd[1..]);
                 }
+                if let Some(e) = env{
+                    command.env("MBLOCK_SIGNAL", e.signal.to_string().as_str() )
+                        .env("MBLOCK_SIGVAL", e.sigcomp.to_string().as_str());
+                }
                 let output;
                 if let Ok(r) = command.output() {
                     output = r;

@@ -35,7 +35,7 @@ Each block has a kind, executes a command, and has a prefix and a suffix for for
 
 There are 3 kinds of blocks:
 
-- Once: blocks labeled with this kind are executed once at the start of the program. The signal field will be ignored.
+- Once: blocks labeled with this kind are executed once at the start of the program.
 - Interval(N): blocks of this type are executed every N seconds. If the signal field is not None, it will fire immediately when this signal is received.
 - Signal{ S: signal }: these blocks are executed when the signal S is sent to the mblocks process. To send a signal, you can use `kill -$((34 + S)) $(pidof mblocks)` where `S` is the argument given to Signal, and it should not exceed 15 (1 <= S <= 15). This means you can define at most 15 Signal blocks, which is large enough.
 
