@@ -8,3 +8,4 @@ pub mod memory;
 pub mod uptime;
 
 pub mod batterstate;
+pub mod clicksignal;
