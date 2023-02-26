@@ -9,11 +9,14 @@ use std::{
 use libc::{sigaction, siginfo_t, SA_SIGINFO};
 
 lazy_static! {
-    static ref SIGNAL_SENDERS: Mutex<Signal> = { Mutex::new(Signal::new()) };
+    static ref SIGNAL_SENDERS: Mutex<Signal> = Mutex::new(Signal::new()) ;
 }
 
 extern "C" fn signal_handler(signal: i32, info: *mut siginfo_t, _: *mut libc::c_void) {
     unsafe {
+        let val = (*info).si_value().sival_ptr as i32;
+        println!("sig: {}, val: {}",signal, val);
+        
         let sig = SIGNAL_SENDERS.lock().unwrap();
         if let Some(senders) = sig.registers.get(&signal) {
             for sender in senders {

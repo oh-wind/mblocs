@@ -34,9 +34,6 @@ pub struct Block<'a> {
 
 impl Block<'_> {
     pub fn execute(&self, env: Option<Env>) -> Option<String> {
-        if let Some(e) = env {
-            println!("{:?}, {:?}", self, e);
-        }
         match self.command {
             CommandType::Shell(cmd) => {
                 let l: usize = cmd.len();

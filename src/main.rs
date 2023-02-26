@@ -27,10 +27,12 @@ use libc::SIGRTMIN;
 fn await_signals(tx: Sender<(i32, i32)>, signum: i32) {
     let rev = if signum == -1 {
         signal::Signal::reg([SIGTERM, SIGHUP, SIGINT].to_vec())
-    } else {
+    } else if signum > 0 {
         signal::Signal::reg([signum, SIGTERM, SIGINT, SIGHUP].to_vec())
+    } else {
+        return;
     };
-    loop {
+    loop { 
         let sig = rev.recv().unwrap();
         tx.send(sig).unwrap();
         if is_terminal(sig.0) {
@@ -80,7 +82,7 @@ fn main() {
                             break;
                         }
                         _signum => {
-                            let msg = b.execute(Some(Env { signal, sigcomp }));
+                            let msg = b.execute(Some(Env { signal: _signum, sigcomp }));
                             tx_clone.send((i, msg)).unwrap();
                         }
                     }
@@ -126,7 +128,7 @@ fn main() {
                                 break;
                             }
                             _signum => {
-                                let msg = b.execute(Some(Env { signal, sigcomp }));
+                                let msg = b.execute(Some(Env { signal: _signum, sigcomp }));
                                 tx_clone.send((i, msg)).unwrap();
                             }
                         }
